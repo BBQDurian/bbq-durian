@@ -10,7 +10,7 @@ type Phase = "upload" | "analyzing" | "chat" | "generating" | "ready";
 
 export default function AnalysisWorkspacePage() {
   const navigate = useNavigate();
-  const { createDeal, devMode } = useDemoData();
+  const { createDeal } = useDemoData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [phase, setPhase] = useState<Phase>("upload");
@@ -218,16 +218,14 @@ export default function AnalysisWorkspacePage() {
             <img src="/assets/workspace-plus.svg" alt="" />
             Select Text File
           </button>
-          {devMode && (
-            <button
-              type="button"
-              onClick={loadSample}
-              className="sample-link sample-link--primary"
-              disabled={phase !== "upload"}
-            >
-              ✦ Use local sample for demo
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={loadSample}
+            className="sample-link sample-link--primary"
+            disabled={phase !== "upload"}
+          >
+            ✦ Use local sample for demo
+          </button>
         </section>
 
         {fileName && (
