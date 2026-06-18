@@ -1,5 +1,4 @@
 import type { Evaluation } from "../../data/types";
-import { apiFetch } from "../api";
 
 export type BusinessAgentStep = {
   agentName: string;
@@ -7,22 +6,53 @@ export type BusinessAgentStep = {
   message: string;
 };
 
-const STEPS: BusinessAgentStep[] = [
-  { agentName: "Risk Assessor", to: "Compliance Lead", message: "Profit score: 72 — within acceptable threshold" },
-  { agentName: "Compliance Lead", to: "Senior Approver", message: "Compliance score: 88 — no policy violations" },
-  { agentName: "Senior Approver", to: "Business Admin", message: "Evaluation complete — recommendation available" },
-];
-
 export async function evaluateDealStream(
   dealId: string,
   onStep: (step: BusinessAgentStep) => void = () => {},
 ): Promise<Evaluation> {
-  for (const step of STEPS) {
-    onStep(step);
-    await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
-  }
-  const data = await apiFetch<{ evaluation: Evaluation }>(`/api/deals/${dealId}/evaluate`, {
+  const response = await fetch(`/api/deals/${dealId}/evaluate`, {
     method: "POST",
+    credentials: "same-origin",
   });
-  return data.evaluation;
+
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    const data = (await response.json()) as { evaluation: Evaluation };
+    return data.evaluation;
+  }
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Evaluation failed (${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const eventLine = part.split("\n").find((l) => l.startsWith("event:"));
+      const dataLine = part.split("\n").find((l) => l.startsWith("data:"));
+      if (!dataLine) continue;
+
+      const event = eventLine?.slice("event:".length).trim() ?? "message";
+      const data = JSON.parse(dataLine.slice("data:".length).trim()) as unknown;
+
+      if (event === "agent_step") {
+        onStep(data as BusinessAgentStep);
+      } else if (event === "done") {
+        return (data as { evaluation: Evaluation }).evaluation;
+      } else if (event === "error") {
+        throw new Error((data as { message: string }).message);
+      }
+    }
+  }
+
+  throw new Error("Stream ended without a result.");
 }
