@@ -122,9 +122,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         setCurrentUser(session.user);
         if (session.user) await refreshDeals();
       })
-      .catch(() => {
-        // Not authenticated — ignore, login page will show
-      })
+      .catch(() => {})
       .finally(() => {
         if (active) setSessionLoading(false);
       });
@@ -142,12 +140,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       loading,
 
       login: async (email, _password) => {
-        const session = await apiFetch<SessionResponse & { token?: string }>("/api/auth/session", {
+        const team = email === "bob@dealmaker.com" ? "business" : "sales";
+        const session = await apiFetch<SessionResponse>("/api/auth/session", {
           method: "POST",
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ team }),
         });
         if (!session.user) throw new Error("Login did not return a user.");
-        if (session.token) localStorage.setItem("dm_token", session.token);
         setCurrentUser(session.user);
         setDevMode(session.devMode);
         await refreshDeals();
@@ -156,7 +154,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
       logout: async () => {
         try { await apiFetch("/api/auth/session", { method: "DELETE" }); } catch {}
-        localStorage.removeItem("dm_token");
         setCurrentUser(undefined);
         setDeals([]);
       },

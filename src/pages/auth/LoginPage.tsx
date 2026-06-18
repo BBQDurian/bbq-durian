@@ -33,9 +33,7 @@ export default function LoginPage() {
     setError("");
     try {
       const user = await login(email, password);
-      navigate(
-        user.team === "sales" ? "/active-pipelines-sales" : "/active-pipelines-business",
-      );
+      navigate(user.team === "sales" ? "/active-pipelines-sales" : "/active-pipelines-business");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Login failed.");
     } finally {

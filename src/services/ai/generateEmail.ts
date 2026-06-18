@@ -1,5 +1,4 @@
 import type { Email, ExtractedInfo } from "../../data/types";
-import { apiFetch } from "../api";
 
 export type AgentStep = {
   agentName: string;
@@ -15,28 +14,56 @@ export type GenerateEmailResult = {
   roomId?: string;
 };
 
-const STEPS: AgentStep[] = [
-  { agentName: "Deal Extractor", to: "Pricing Analyst", message: "Analyzing conversation for key business terms …" },
-  { agentName: "Deal Extractor", to: "Pricing Analyst", message: "Extracted company: TechVanguard Technology Co., Ltd." },
-  { agentName: "Pricing Analyst", to: "Compliance Agent", message: "TVG-M5 × 50 units @ ¥4,200 = ¥210,000 — master agreement pricing applies" },
-  { agentName: "Pricing Analyst", to: "Compliance Agent", message: "No discount override found" },
-  { agentName: "Compliance Agent", to: "Proposal Writer", message: "All policy rules passed, compliance score nominal" },
-  { agentName: "Proposal Writer", to: "Quality Assurance", message: "Drafting commercial proposal email …" },
-  { agentName: "Proposal Writer", to: "Quality Assurance", message: "Deal summary formatted for business review" },
-  { agentName: "Quality Assurance", to: "Proposal Assistant", message: "Proposal validated — ready for submission" },
-];
-
 export async function generateEmail(
   info: ExtractedInfo,
   rawConversation = "",
   onStep: (step: AgentStep) => void = () => {},
 ): Promise<GenerateEmailResult> {
-  for (const step of STEPS) {
-    onStep(step);
-    await new Promise((r) => setTimeout(r, 350 + Math.random() * 250));
-  }
-  return apiFetch<GenerateEmailResult>("/api/agents/generate-email", {
+  const response = await fetch("/api/agents/generate-email", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify({ info, rawConversation }),
   });
+
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    const data = (await response.json()) as { error?: string } & GenerateEmailResult;
+    if (!response.ok || data.error) throw new Error(data.error ?? "Email generation failed");
+    return data;
+  }
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Email generation failed (${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const eventLine = part.split("\n").find((l) => l.startsWith("event:"));
+      const dataLine = part.split("\n").find((l) => l.startsWith("data:"));
+      if (!dataLine) continue;
+
+      const event = eventLine?.slice("event:".length).trim() ?? "message";
+      const data = JSON.parse(dataLine.slice("data:".length).trim()) as unknown;
+
+      if (event === "agent_step") {
+        onStep(data as AgentStep);
+      } else if (event === "done") {
+        return data as GenerateEmailResult;
+      } else if (event === "error") {
+        throw new Error((data as { message: string }).message);
+      }
+    }
+  }
+  throw new Error("Stream ended without a result.");
 }

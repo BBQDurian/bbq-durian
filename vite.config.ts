@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://dealmaker-api.bbq-durian.workers.dev',
+        target: 'https://dealmaker.bbq-durian.workers.dev',
         changeOrigin: true,
       },
     },
